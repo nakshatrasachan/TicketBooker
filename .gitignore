@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Build & Production output
+# This covers Vite's 'dist' folder and others
+dist/
+build/
+
+# IDE & Editor directories
+.vscode/
+.idea/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Test reports
+coverage/
+*.lcovs

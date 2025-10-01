@@ -1,0 +1,144 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  booking-service:
+    build: ./services/booking-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672 # Important for EDA
+      - NODE_ENV=development
+    command: npm run dev
+    # volumes:
+    #   - ./services/booking-service:/usr/src/app
+    #   - /usr/src/app/node_modules
+     # --- NEW 'develop' SECTION ---
+    # This replaces the 'volumes' key for development
+    develop:
+      watch:
+        # This action syncs code changes into the container
+        - action: sync
+          path: ./services/booking-service
+          target: /usr/src/app
+          ignore: # It's good practice to ignore node_modules
+            - node_modules/
+        
+        # This action will automatically REBUILD the image if dependencies change
+        - action: rebuild
+          path: ./services/booking-service/package.json
+
+   
+    depends_on:
+      rabbitmq: # <-- Add the condition
+        condition: service_healthy
+      redis:
+        condition: service_started # Redis starts very fast
+
+  notification-service: # --- NEW SERVICE ---
+    build: ./services/notification-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    command: npm run dev
+    develop:
+      watch:
+        - action: sync
+          path: ./services/notification-service
+          target: /usr/src/app
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./services/notification-service/package.json
+    depends_on:
+      rabbitmq: # <-- Add the condition
+        condition: service_healthy
+
+  show-service: # --- ADD THIS NEW SERVICE ---
+    build: ./services/show-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - DATABASE_URL=postgres://myuser:mypassword@postgres-db:5432/mydatabase
+    command: npm run dev
+    develop:
+      watch:
+        - action: sync
+          path: ./services/show-service
+          target: /usr/src/app
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./services/show-service/package.json
+    depends_on: # <-- ADD THIS
+      rabbitmq:
+        condition: service_healthy
+      postgres-db: # <-- ADD THIS
+        condition: service_started
+
+  user-service: # --- ADD THIS NEW SERVICE ---
+    build: ./services/user-service
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - DATABASE_URL=postgres://myuser:mypassword@postgres-db:5432/mydatabase
+    depends_on:
+      postgres-db:
+        condition: service_healthy # Add this dependency
+    command: npm run dev
+    develop:
+      watch:
+        - action: sync
+          path: ./services/user-service
+          target: /usr/src/app
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: ./services/user-service/package.json
+
+  postgres-db: # --- ADD THIS NEW DATABASE SERVICE ---
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=mydatabase
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck: # <-- ADD THIS BLOCK
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydatabase"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck: # <-- Add a healthcheck for Redis too (good practice)
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq: # Add this service
+    image: rabbitmq:3.9-management
+    ports:
+      - "5672:5672"
+      - "15672:15672" # Management UI
+    healthcheck: # <-- THIS IS THE KEY FIX
+      test: ["CMD", "rabbitmq-diagnostics", "ping", "-q"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes: 
+  postgres-data:
